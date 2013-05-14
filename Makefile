@@ -1,7 +1,7 @@
 CC     := g++
-CFLAGS := -O2
+CFLAGS := -O2 -std=c++0x
 TARGET := tunnel
-OBJS   := main.o tun.o network.o socket.o ioctl.o 
+OBJS   := main.o tun.o network.o socket.o binding.o 
 
 all: $(TARGET)
 

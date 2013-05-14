@@ -11,6 +11,8 @@
 
 #include "tun.h"
 #include "network.h"
+#include "socket.h"
+#include "binding.h"
 
 using namespace std;
 
@@ -45,14 +47,23 @@ int main(int argc, char *argv[])
 	
 	//Create TUN/TAP interface
 	int tun = tun_create(tun_name, IFF_TUN | IFF_NO_PI);
-	if (tun < 0) 
-	{
-		return 1;
+	if (tun < 0) {
+		exit(1);
 	}
 	fprintf(stderr, "interface name: %s\n", tun_name);
 
 	set_mtu(tun_name, mtu);//set mtu
 	interface_up(tun_name);//interface up
+	
+	int raw_fd = socket_init();
+	if (raw_fd < 0) {
+		exit(1);
+	}
+	
+	int binding_fd = binding_init();
+	if (binding_fd < 0) {
+		exit(1);
+	}
 
 //	int len;
 	while (1) {//printf("loop!\n");
