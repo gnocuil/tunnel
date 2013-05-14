@@ -46,8 +46,8 @@ int main(int argc, char *argv[])
 	}
 	
 	//Create TUN/TAP interface
-	int tun = tun_create(tun_name, IFF_TUN | IFF_NO_PI);
-	if (tun < 0) {
+	int tun_fd = tun_create(tun_name, IFF_TUN | IFF_NO_PI);
+	if (tun_fd < 0) {
 		exit(1);
 	}
 	fprintf(stderr, "interface name: %s\n", tun_name);
@@ -65,31 +65,34 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-//	int len;
-	while (1) {//printf("loop!\n");
-/*
-		len = read(tun, buf, sizeof(buf));
+	fd_set set;
+	int maxsock = tun_fd;
+	if (raw_fd > maxsock)
+		maxsock = raw_fd;
+	if (binding_fd > maxsock)
+		maxsock = binding_fd;
+	while (1) {
+		FD_ZERO(&set);
+		FD_SET(tun_fd, &set);
+		FD_SET(raw_fd, &set);
+		FD_SET(binding_fd, &set);
 		
-		printf("read %d bytes\n", len);
-		int i;
-		for(i=0;i<len;i++)
-		{
-		  printf("%02x ",buf[i]);
-		}
-		printf("\n");
+		int ret = select(maxsock + 1, &set, NULL, NULL, NULL);
 		
-		if (len < 0)
+		if (ret < 0) {
+			fprintf(stderr, "main: Error in select: %m\n", errno);
 			break;
-#define ETH_LEN 0
-		memcpy(ip, &buf[ETH_LEN + 12], 4);
-		memcpy(&buf[ETH_LEN + 12], &buf[ETH_LEN + 16], 4);
-		memcpy(&buf[ETH_LEN + 16], ip, 4);
-		buf[ETH_LEN + 20] = 0;
-		*((unsigned short*)&buf[ETH_LEN + 22]) += 8;
-		
-		len = write(tun, buf, len);
-		//printf("write %d bytes\n", ret);
-*/
+		}
+		if (FD_ISSET(tun_fd, &set)) {
+			printf("select: TUN!!!\n");
+			handle_tun();
+		} else if (FD_ISSET(raw_fd, &set)) {
+			printf("select: RAW!!!\n");
+			handle_socket();
+		} else if (FD_ISSET(binding_fd, &set)) {
+			printf("select: Binding!!!\n");
+			handle_binding();
+		}
 	}
 
 	return 0;

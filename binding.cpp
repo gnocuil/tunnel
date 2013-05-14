@@ -11,6 +11,8 @@
 
 using namespace std;
 
+static int server_fd;
+
 static uint16_t mask[] = {
 	0x0,
 	0x8000,
@@ -35,7 +37,7 @@ static unordered_map<uint64_t, Binding*> table;
 
 static inline uint64_t getkey(const Binding& record)
 {
-	return ((uint64_t)record.remote.s_addr << 32) | (record.pset_mask <<16) | record.pset_index;
+	return ((uint64_t)record.addr_TI.s_addr << 32) | (record.pset_mask <<16) | record.pset_index;
 }
 
 static inline uint64_t getkey(uint32_t ip, uint16_t pset_mask, uint16_t pset_index)
@@ -55,6 +57,18 @@ void insert(const Binding& record)
 	}
 }
 
+void remove(const Binding& record)
+{
+	uint64_t key = getkey(record);
+	unordered_map<uint64_t, Binding*>::iterator it = table.find(key);
+	if (it != table.end()) {//Insert
+		if (it->second != NULL) {
+			delete it->second;
+			it->second = NULL;
+		}
+	}
+}
+
 Binding* find(uint32_t ip, uint16_t port)
 {
 	for (int len = 16; len >= 0; --len) {
@@ -67,13 +81,69 @@ Binding* find(uint32_t ip, uint16_t port)
 	return NULL;
 }
 
+int handle_binding()
+{
+	int client_fd = accept(server_fd, NULL, NULL);
+	uint8_t command;
+	int count;
+	uint32_t size;
+	
+	count = read(client_fd, &command, 1);
+	if (count != 1) {
+		fprintf(stderr, "handle_socket: Error reading command: %m\n", errno);
+		return -1;
+	}
+	Binding binding;
+	switch (command) {
+		case TUNNEL_SET_MAPPING:
+			count = read(client_fd, &binding, sizeof(Binding));
+			if (count != sizeof(Binding)) {
+				fprintf(stderr, "handle_socket: Error reading: %m\n", errno);
+				return -1;
+			}
+			insert(binding);
+			break;
+		case TUNNEL_DEL_MAPPING:
+			count = read(client_fd, &binding, sizeof(Binding));
+			if (count != sizeof(Binding)) {
+				fprintf(stderr, "handle_socket: Error reading: %m\n", errno);
+				return -1;
+			}
+			remove(binding);
+			break;
+		case TUNNEL_GET_MAPPING:
+			size = table.size();
+			count = write(client_fd, &size, 4);
+			for (unordered_map<uint64_t, Binding*>::iterator it = table.begin(); it != table.end(); ++it) {
+				if (it->second != NULL) {
+					count = write(client_fd, it->second, sizeof(Binding));
+				}
+			}
+			break;
+		case TUNNEL_FLUSH_MAPPING:
+			for (unordered_map<uint64_t, Binding*>::iterator it = table.begin(); it != table.end(); ++it) {
+				if (it->second != NULL) {
+					delete it->second;
+					it->second = NULL;
+				}
+			}
+			table.clear();
+			break;
+		case TUNNEL_MAPPING_NUM:
+			size = table.size();
+			count = write(client_fd, &size, 4);			
+			break;
+		default:
+			break;
+	};
+	close(client_fd);
+	return 0;
+}
+
 int binding_init()
 {
-	int server_fd;
-	int client_fd;
 	struct sockaddr_un server_addr; 
-	struct sockaddr_un client_addr;
-	size_t server_len,client_len;
+	size_t server_len;
 
 	if ((server_fd = socket(AF_UNIX, SOCK_STREAM,  0)) == -1) {
 		fprintf(stderr, "binding_init: Failed to create socket: %m\n", errno);
@@ -87,27 +157,7 @@ int binding_init()
 	//server_len = sizeof(server_addr);
 	server_len = strlen(SERVER_NAME)  + offsetof(struct sockaddr_un, sun_path);
 	
-
 	bind(server_fd, (struct sockaddr *)&server_addr, server_len);
-	//listen the server
 	listen(server_fd, 5);
-	printf("after listen\n");
-	char ch;
-	while(1){
-		printf("server waiting...\n");
-		
-		//accept client connect
-		client_len = sizeof(client_addr);
-		client_fd = accept(server_fd,(struct sockaddr*)&client_addr, &client_len);
-		printf("after accept\n");
-		//read  data from client socket
-		read(client_fd, &ch, 1);
-		printf("read from client %d: %c",client_fd,ch);
-		ch ++;
-		write(client_fd, &ch, 1);
-		close(client_fd);
-		usleep(100);//1000 miliseconds = 1 second
-	}
-	
 	return server_fd;
 }

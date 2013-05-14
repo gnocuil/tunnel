@@ -122,7 +122,7 @@ int route_add(char * interface_name)
 	//skfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if(ioctl(skfd, SIOCADDRT, &rt) < 0) 
 	{
-		printf("Error route add :%m\n", errno);
+		fprintf(stderr, "Error route add :%m\n", errno);
 		return -1;
 	}
 }

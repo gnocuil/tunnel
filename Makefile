@@ -10,7 +10,7 @@ $(TARGET) : $(OBJS)
 
 %.o: %.cpp
 	$(CC) -c $(CFLAGS) $< -o $@
-
+	
 clean :
 	rm -f $(TARGET)
 	rm -f *.o
