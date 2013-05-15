@@ -14,9 +14,9 @@
 #include "socket.h"
 
 static int tun_fd;
-static char buf[2000];
+static char buf[2040];
 
-int tun_create(char *dev, int flags)
+int tun_create(char *dev)
 {
 	struct ifreq ifr;
 	int err;
@@ -27,7 +27,7 @@ int tun_create(char *dev, int flags)
 	}
 
 	memset(&ifr, 0, sizeof(ifr));
-	ifr.ifr_flags |= flags;
+	ifr.ifr_flags |= IFF_TUN | IFF_NO_PI;
 
 	if (*dev != '\0') {
 		strncpy(ifr.ifr_name, dev, IFNAMSIZ);
@@ -38,12 +38,14 @@ int tun_create(char *dev, int flags)
 		close(tun_fd);
 		return -1;
 	}
+	
 	if (fcntl(tun_fd, F_SETFL, O_NONBLOCK) < 0) {
 		fprintf(stderr, "tun_create: Error Setting nonblock: %m\n", dev, errno);
 		return -1;
 	}
+	
 	strcpy(dev, ifr.ifr_name);
-
+	
 	return tun_fd;
 }
 
@@ -55,22 +57,22 @@ int tun_send(char *packet, int len)
 
 int handle_tun()
 {
-	printf("tun_fd=%d\n", tun_fd);
-	uint16_t len = read(tun_fd, buf + 40, 2000);
+	int len = read(tun_fd, buf + 40, 2000);
+	if (len < 0)
+		return 0;
+	//printf("TUN: read %d bytes\n", len);
 	uint32_t ip = *(uint32_t*)(buf + 40 + 16);
 	Binding* binding = find(ip, 0);
 	if (!binding) {
 		return 0;
 	}
-	printf("found!!!\n");
 	struct ip6_hdr *ip6hdr = (struct ip6_hdr *)buf;
 	ip6hdr->ip6_flow = htonl((6 << 28) | (0 << 20) | 0);		
-	ip6hdr->ip6_plen = htons(len);
+	ip6hdr->ip6_plen = htons(len & 0xFFFF);
 	ip6hdr->ip6_nxt = IPPROTO_IPIP;
 	ip6hdr->ip6_hops = 128;
 	memcpy(&(ip6hdr->ip6_src), &(binding->addr6_TC), sizeof(struct in6_addr));
 	memcpy(&(ip6hdr->ip6_dst), &(binding->addr6_TI), sizeof(struct in6_addr));
 	
-	printf("tun_send!!!\n");
-	socket_send(buf, len + 40);
+	return socket_send(buf, len + 40);
 }

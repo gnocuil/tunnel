@@ -8,6 +8,7 @@
 #include <linux/if_packet.h>
 #include <linux/if_ether.h>
 #include <errno.h>
+#include <arpa/inet.h>
 
 #include "socket.h"
 #include "tun.h"
@@ -38,6 +39,8 @@ int socket_init()
 int handle_socket()
 {
 	int len = recv(raw_fd, buf, 2000, 0);
+	if (len < 0)
+		return 0;
 	if (buf[0] != 0x60)
 		return 0;
 	struct ip6_hdr *ip6hdr = (struct ip6_hdr *)buf;
@@ -51,10 +54,15 @@ int handle_socket()
 int socket_send(char *buf, int len)
 {
 	struct sockaddr_in6 dest;
+	memset(&dest, 0, sizeof(dest));
 	dest.sin6_family = AF_INET6;
 	memcpy(&dest.sin6_addr, buf + 24, 16);
+	
 	if (sendto(send6_fd, buf, len, 0, (struct sockaddr *)&dest, sizeof(dest)) < 0) {
-		fprintf(stderr, "socket_send: Failed to send ipv6 packet: %m\n", errno);
-		exit(1);
+		fprintf(stderr, "socket_send: Failed to send ipv6 packet len=%d: %m\n", len, errno);
+		int i;
+		for (i = 0; i < len; ++i) printf("%d:%x ", i + 1, buf[i] & 0xFF);printf("\n");
+		return -1;
 	}
+	return 0;
 }

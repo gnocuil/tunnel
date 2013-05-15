@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
 	mtu = 1460;
 	
 	for (int i = 1; i < argc; ++i) {
-		if (i + 1 < argc && strcmp(argv[i], "--help") == 0) {
+		if (strcmp(argv[i], "--help") == 0) {
 			usage();
 		}
 		if (i + 1 < argc && strcmp(argv[i], "--name") == 0) {
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 	}
 	
 	//Create TUN/TAP interface
-	int tun_fd = tun_create(tun_name, IFF_TUN | IFF_NO_PI);
+	int tun_fd = tun_create(tun_name);
 	if (tun_fd < 0) {
 		exit(1);
 	}
