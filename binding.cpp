@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <errno.h>
+#include <fcntl.h>
 
 #include "binding.h"
 
@@ -148,6 +149,11 @@ int binding_init()
 	if ((server_fd = socket(AF_UNIX, SOCK_STREAM,  0)) == -1) {
 		fprintf(stderr, "binding_init: Failed to create socket: %m\n", errno);
 		exit(1);
+	}
+	
+	if (fcntl(server_fd, F_SETFL, O_NONBLOCK) < 0) {
+		fprintf(stderr, "binding_init: Error Setting nonblock: %m\n", errno);
+		return -1;
 	}
 	
 	//name the socket

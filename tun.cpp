@@ -75,4 +75,5 @@ int handle_tun()
 	memcpy(&(ip6hdr->ip6_dst), &(binding->addr6_TI), sizeof(struct in6_addr));
 	
 	return socket_send(buf, len + 40);
+	//return tun_send(buf, len + 40);
 }

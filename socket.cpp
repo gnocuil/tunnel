@@ -9,6 +9,7 @@
 #include <linux/if_ether.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 #include "socket.h"
 #include "tun.h"
@@ -19,11 +20,16 @@ static char buf[2000];
 
 int socket_init()
 {
-	raw_fd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
-	//raw_fd = socket(AF_PACKET, SOCK_DGRAM, IPPROTO_IPIP);
+	//raw_fd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
+	raw_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_IPIP);
 	
 	if (raw_fd < 0) {
 		fprintf(stderr, "socket_init: Error Creating socket: %m\n", errno);
+		return -1;
+	}
+	
+	if (fcntl(raw_fd, F_SETFL, O_NONBLOCK) < 0) {
+		fprintf(stderr, "socket_init: Error Setting nonblock: %m\n", errno);
 		return -1;
 	}
 	
@@ -38,17 +44,13 @@ int socket_init()
 
 int handle_socket()
 {
-	int len = recv(raw_fd, buf, 2000, 0);
+	struct sockaddr_in6 sin6addr;
+	socklen_t addr_len = sizeof (sin6addr);
+	int len = recvfrom(raw_fd, buf, 2000, 0, (struct sockaddr*)&sin6addr, &addr_len);
 	if (len < 0)
 		return 0;
-	if (buf[0] != 0x60)
-		return 0;
-	struct ip6_hdr *ip6hdr = (struct ip6_hdr *)buf;
-	if (ip6hdr->ip6_nxt != IPPROTO_IPIP)
-		return 0;
-	
-	printf("tun_send!!!\n");
-	tun_send(buf + 40, len - 40);
+	//sin6addr.sin6_addr is the IPv6 addr of TI (struct in6_addr)
+	tun_send(buf, len);
 }
 
 int socket_send(char *buf, int len)
@@ -60,8 +62,7 @@ int socket_send(char *buf, int len)
 	
 	if (sendto(send6_fd, buf, len, 0, (struct sockaddr *)&dest, sizeof(dest)) < 0) {
 		fprintf(stderr, "socket_send: Failed to send ipv6 packet len=%d: %m\n", len, errno);
-		int i;
-		for (i = 0; i < len; ++i) printf("%d:%x ", i + 1, buf[i] & 0xFF);printf("\n");
+		//for (int i = 0; i < len; ++i) printf("%d:%x ", i + 1, buf[i] & 0xFF);printf("\n");
 		return -1;
 	}
 	return 0;

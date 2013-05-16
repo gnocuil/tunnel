@@ -16,11 +16,13 @@
 
 using namespace std;
 
+#define DEFAULT_MTU 1460
+
 static void usage()
 {
 	fprintf(stderr, "Usage: tunnel [options]\n");
 	fprintf(stderr, "  options: --name <TUNNEL_NAME>       default: 4over6\n");
-	fprintf(stderr, "           --mtu <MTU_VALUE>          default: 1460\n");
+	fprintf(stderr, "           --mtu <MTU_VALUE>          default: %d\n", DEFAULT_MTU);
 	
 	exit(1);
 }
@@ -30,7 +32,7 @@ int main(int argc, char *argv[])
 	srand(time(NULL));
 	char tun_name[IFNAMSIZ] = {0};
 	strncpy(tun_name, TUNNEL_NAME, IFNAMSIZ);
-	mtu = 1460;
+	mtu = DEFAULT_MTU;
 	
 	for (int i = 1; i < argc; ++i) {
 		if (strcmp(argv[i], "--help") == 0) {
