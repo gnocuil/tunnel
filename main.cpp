@@ -85,12 +85,12 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "main: Error in select: %m\n", errno);
 			break;
 		}
-		if (FD_ISSET(tun_fd, &set)) {
-			printf("select: TUN!!!\n");
-			handle_tun();
-		} else if (FD_ISSET(raw_fd, &set)) {
+		if (FD_ISSET(raw_fd, &set)) {
 			printf("select: RAW!!!\n");
 			handle_socket();
+		} else if (FD_ISSET(tun_fd, &set)) {
+			printf("select: TUN!!!\n");
+			handle_tun();
 		} else if (FD_ISSET(binding_fd, &set)) {
 			printf("select: Binding!!!\n");
 			handle_binding();
