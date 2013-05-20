@@ -7,6 +7,8 @@
 #include <sys/ioctl.h>
 #include <iostream>
 #include <netinet/ip6.h>  
+#include <netinet/tcp.h>
+#include <netinet/ip_icmp.h>
 #include <fcntl.h>
 
 #include "tun.h"
@@ -55,6 +57,45 @@ int tun_send(char *packet, int len)
 	return 0;
 }
 
+static uint16_t bigpacket[65536];
+static uint16_t getport_dest(char *ippacket)
+{
+	struct iphdr *iph = (struct iphdr*)ippacket;
+	uint16_t ret = 0;
+	uint8_t flags = (uint8_t)(ntohs(iph->frag_off) >> 13);
+	//fragment offset
+	uint16_t frag_off = ntohs(iph->frag_off) & 0x1FFF;
+	
+	//for fragmented ipv4 packets, choose the port number in the first packet
+	if (frag_off != 0)
+		return bigpacket[iph->id];
+	
+	int protoff = iph -> ihl * 4;
+	if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP) {
+		struct tcphdr* tcph = (struct tcphdr*)(ippacket + protoff);
+		ret = ntohs(tcph->dest);
+	} else if (iph->protocol == IPPROTO_ICMP) {
+		struct icmp *icmph = (struct icmp*)(ippacket + protoff);
+		switch (icmph->icmp_type) {
+			case ICMP_ECHOREPLY:
+			case ICMP_ECHO:
+				ret = htons(icmph->icmp_id);
+				break;
+			default:
+				iph = (struct iphdr*) (((uint8_t*)icmph) + 8);
+				protoff = iph -> ihl * 4;
+				if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP) {
+					struct tcphdr* tcph = (struct tcphdr*) (iph + protoff);
+					ret = ntohs(tcph->source);
+				}
+				break;
+		}
+	} 
+	if ((flags & 1) && frag_off == 0)
+		bigpacket[iph->id] = ret;
+	return ret;
+}
+
 int handle_tun()
 {
 	int len = read(tun_fd, buf + 40, 2000);
@@ -62,7 +103,7 @@ int handle_tun()
 		return 0;
 	//printf("TUN: read %d bytes\n", len);
 	uint32_t ip = *(uint32_t*)(buf + 40 + 16);
-	Binding* binding = find(ip, 0);
+	Binding* binding = find(ip, getport_dest(buf + 40));
 	if (!binding) {
 		return 0;
 	}
