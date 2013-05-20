@@ -10,12 +10,14 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 
 #include "socket.h"
 #include "tun.h"
 
 static int raw_fd;
 static int send6_fd;
+static int send4_fd;
 static char buf[2000];
 
 int socket_init()
@@ -28,18 +30,27 @@ int socket_init()
 		return -1;
 	}
 	
-	if (fcntl(raw_fd, F_SETFL, O_NONBLOCK) < 0) {
-		fprintf(stderr, "socket_init: Error Setting nonblock: %m\n", errno);
+//	if (fcntl(raw_fd, F_SETFL, O_NONBLOCK) < 0) {i
+//		fprintf(stderr, "socket_init: Error Setting nonblock: %m\n", errno);
+//		return -1;
+//	}
+	
+	send4_fd = socket(PF_INET, SOCK_RAW, IPPROTO_RAW);
+	if (send4_fd < 0) {
+		fprintf(stderr, "socket_init : Error Creating send4 socket: %m\n", errno);
 		return -1;
 	}
-	
+
+	return raw_fd;
+}
+
+int socket_init_tun()
+{
 	send6_fd = socket(PF_INET6, SOCK_RAW, IPPROTO_RAW);
 	if (send6_fd < 0) {
 		fprintf(stderr, "socket_init: Error Creating send socket: %m\n", errno);
 		return -1;
 	}
-
-	return raw_fd;
 }
 
 int handle_socket()
@@ -49,8 +60,22 @@ int handle_socket()
 	int len = recvfrom(raw_fd, buf, 2000, 0, (struct sockaddr*)&sin6addr, &addr_len);
 	if (len < 0)
 		return 0;
+	printf("socket: read %d bytes\n", len);
 	//sin6addr.sin6_addr is the IPv6 addr of TI (struct in6_addr)
-	tun_send(buf, len);
+	socket_send4(buf, len);
+}
+
+int socket_send4(char *buf, int len)
+{
+	struct sockaddr_in dest;
+	memset(&dest, 0, sizeof(dest));
+	dest.sin_family = AF_INET;
+	memcpy(&dest.sin_addr, buf + 16, 4);
+	if (sendto(send4_fd, buf, len, 0, (struct sockaddr *)&dest, sizeof(dest)) < 0) {
+		fprintf(stderr, "socket_send4: Failed to send ipv4 packet len=%d: %m\n", len, errno);
+		return -1;
+	}
+	return 0;
 }
 
 int socket_send(char *buf, int len)
