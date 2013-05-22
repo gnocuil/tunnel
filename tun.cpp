@@ -40,11 +40,12 @@ int tun_create(char *dev)
 		close(tun_fd);
 		return -1;
 	}
-	
+/*
 	if (fcntl(tun_fd, F_SETFL, O_NONBLOCK) < 0) {
 		fprintf(stderr, "tun_create: Error Setting nonblock: %m\n", dev, errno);
 		return -1;
 	}
+*/
 	
 	strcpy(dev, ifr.ifr_name);
 	
@@ -54,6 +55,10 @@ int tun_create(char *dev)
 int tun_send(char *packet, int len)
 {
 	int count = write(tun_fd, packet, len);
+	if (count != len) {
+		fprintf(stderr, "tun_send : Error sending len=%d count=%d: %m\n", len, count, errno);
+		return -1;
+	}
 	return 0;
 }
 
@@ -101,7 +106,15 @@ int handle_tun()
 	int len = read(tun_fd, buf + 40, 2000);
 	if (len < 0)
 		return 0;
-	//printf("TUN: read %d bytes\n", len);
+/*
+	static long long sum = 0;
+	static int count = 0;
+	sum += len;
+	++count;
+	if (count % 1000 == 0) printf("TUN: read %d packets %lld bytes\n", count, sum);
+	usleep(10);
+*/
+
 	uint32_t ip = *(uint32_t*)(buf + 40 + 16);
 	Binding* binding = find(ip, getport_dest(buf + 40));
 	if (!binding) {

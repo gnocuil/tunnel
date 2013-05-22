@@ -47,18 +47,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	int pid = fork();
-	if (pid == 0) {//son
-		int raw_fd = socket_init();
-		if (raw_fd < 0) {
-			exit(1);
-		}
-		while (1)
-			handle_socket();
-		
-	}
-
-	//father
 	//Create TUN/TAP interface
 	int tun_fd = tun_create(tun_name);
 	if (tun_fd < 0) {
@@ -69,12 +57,23 @@ int main(int argc, char *argv[])
 	set_mtu(tun_name, mtu);//set mtu
 	interface_up(tun_name);//interface up
 
-	socket_init_tun();	
-//	int raw_fd = socket_init();
-//	if (raw_fd < 0) {
-//		exit(1);
-//	}
-	
+	int pid = fork();
+	if (pid == 0) {//son
+		int raw_fd = socket_init();
+		if (raw_fd < 0) {
+			exit(1);
+		}
+		while (1)
+			handle_socket();
+	}
+	//father
+	socket_init_tun();
+/*
+	int raw_fd = socket_init();
+	if (raw_fd < 0) {
+		exit(1);
+	}
+*/	
 	int binding_fd = binding_init();
 	if (binding_fd < 0) {
 		exit(1);
@@ -99,15 +98,19 @@ int main(int argc, char *argv[])
 			break;
 		}
 		if (FD_ISSET(binding_fd, &set)) {
-			printf("select: Binding!!!\n");
+//			printf("select: Binding!!!\n");
 			handle_binding();
-//		} else if (FD_ISSET(raw_fd, &set)) {
-//			printf("select: RAW!!!\n");
-//			handle_socket();
-		} else if (FD_ISSET(tun_fd, &set)) {
-			printf("select: TUN!!!\n");
+		} 
+		if (FD_ISSET(tun_fd, &set)) {
+//			printf("select: TUN!!!\n");
 			handle_tun();
 		}
+/*
+		if (FD_ISSET(raw_fd, &set)) {
+//			printf("select: RAW!!!\n");
+			handle_socket();
+		} 
+*/
 	}
 
 	return 0;

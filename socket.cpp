@@ -34,13 +34,13 @@ int socket_init()
 //		fprintf(stderr, "socket_init: Error Setting nonblock: %m\n", errno);
 //		return -1;
 //	}
-	
+/*	
 	send4_fd = socket(PF_INET, SOCK_RAW, IPPROTO_RAW);
 	if (send4_fd < 0) {
 		fprintf(stderr, "socket_init : Error Creating send4 socket: %m\n", errno);
 		return -1;
 	}
-
+*/
 	return raw_fd;
 }
 
@@ -60,11 +60,20 @@ int handle_socket()
 	int len = recvfrom(raw_fd, buf, 2000, 0, (struct sockaddr*)&sin6addr, &addr_len);
 	if (len < 0)
 		return 0;
-	printf("socket: read %d bytes\n", len);
+/*
+puts("handle_socket!");
+	static long long sum = 0;
+	static int count = 0;
+	sum += len;
+	++count;
+//	if (count % 1000 == 0) printf("socket: read %d packets %lld bytes\n", count, sum);
+*/
+//	printf("socket: read %d bytes\n", len);
 	//sin6addr.sin6_addr is the IPv6 addr of TI (struct in6_addr)
-	socket_send4(buf, len);
+	//socket_send4(buf, len);
+	tun_send(buf, len);
 }
-
+/*
 int socket_send4(char *buf, int len)
 {
 	struct sockaddr_in dest;
@@ -77,6 +86,7 @@ int socket_send4(char *buf, int len)
 	}
 	return 0;
 }
+*/
 
 int socket_send(char *buf, int len)
 {
@@ -85,7 +95,7 @@ int socket_send(char *buf, int len)
 	dest.sin6_family = AF_INET6;
 	memcpy(&dest.sin6_addr, buf + 24, 16);
 	
-	if (sendto(send6_fd, buf, len, 0, (struct sockaddr *)&dest, sizeof(dest)) < 0) {
+	if (sendto(send6_fd, buf, len, 0, (struct sockaddr *)&dest, sizeof(dest)) != len) {
 		fprintf(stderr, "socket_send: Failed to send ipv6 packet len=%d: %m\n", len, errno);
 		//for (int i = 0; i < len; ++i) printf("%d:%x ", i + 1, buf[i] & 0xFF);printf("\n");
 		return -1;
