@@ -1,8 +1,12 @@
 #pragma once
 
-#include <netinet/icmp6.h>  
+#include <linux/filter.h>
+#include <netinet/ip6.h>
+#include <netinet/icmp6.h>
 
 #include "encap.h"
+
+//#define BIT_CLEAR(nr, addr) do { ((__u32 *)(addr))[(nr) >> 5] &= ~(1U << ((nr) & 31)); } while(0)
 
 struct IPv6_psedoheader {
     uint8_t srcaddr[16];
@@ -26,14 +30,13 @@ public:
 		return buf;
 	}
 	int makepacket(int len) {
-		uint32_t ip = *(uint32_t*)(buf + 40 + 16);
-		Binding* binding = find(ip, getport_dest(buf + 40));
+		uint32_t ip = *(uint32_t*)(buf + 40 + 8 + 16);
+		Binding* binding = find(ip, getport_dest(buf + 40 + 8));
 		if (!binding) {
 			return -1;
 		}
-		
 		struct icmp6_hdr *icmp6hdr = (struct icmp6_hdr*)(buf + 40);
-		icmp6hdr->icmp6_type = ICMP6_ECHO_REQUEST;
+		icmp6hdr->icmp6_type = ICMP6_ECHO_REPLY;
 		icmp6hdr->icmp6_code = 0;
 		icmp6hdr->icmp6_cksum = 0;
 		icmp6hdr->icmp6_id = htons(0xFFFF);
@@ -49,22 +52,39 @@ public:
 		send_len = len + 40 + 8;
 
 		checksum(len + 8);
-		
 		return 0;
 	}
 	int init_socket() {
-		raw_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_IPIP);
+		raw_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
 		if (raw_fd < 0) {
 			fprintf(stderr, "socket_init: Error Creating socket: %m\n", errno);
 			return -1;
 		}
+		struct icmp6_filter filter;
+		ICMP6_FILTER_SETBLOCKALL(&filter);
+		ICMP6_FILTER_SETPASS(ICMP6_ECHO_REQUEST, &filter);
+		
+		int err = setsockopt(raw_fd, IPPROTO_ICMPV6, ICMP6_FILTER, &filter, sizeof(struct icmp6_filter));
+		if (err < 0) {
+			perror("setsockopt(ICMP6_FILTER)");
+			return -1;
+		}
+
 		return raw_fd;
 	}
 	int handle_socket() {
-		return -1;
+		struct sockaddr_in6 sin6addr;
+		socklen_t addr_len = sizeof (sin6addr);
+		int len = recvfrom(raw_fd, buf4, BUF_LEN, 0, (struct sockaddr*)&sin6addr, &addr_len);
+
+		if (len < 0)
+			return -1;
+
+		send4_len = len - 8;		
+		return 0;
 	}
 	char* send4buf() {
-		return buf4;
+		return buf4 + 8;
 	}
 private:
 	void checksum(int len) {//icmp len
