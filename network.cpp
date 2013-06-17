@@ -11,6 +11,8 @@
 
 unsigned mtu;
 
+Encap *encap = NULL;
+
 int set_mtu(char *interface_name, unsigned mtu) {
 	int fd;
 	if ((fd = socket(PF_INET,SOCK_STREAM,0)) < 0) {

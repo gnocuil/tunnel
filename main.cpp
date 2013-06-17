@@ -13,6 +13,9 @@
 #include "network.h"
 #include "socket.h"
 #include "binding.h"
+#include "encap.h"
+#include "ipip.h"
+#include "icmp.h"
 
 using namespace std;
 
@@ -22,6 +25,7 @@ static void usage()
 {
 	fprintf(stderr, "Usage: tunnel [options]\n");
 	fprintf(stderr, "  options: --name <TUNNEL_NAME>       default: 4over6\n");
+	fprintf(stderr, "           --encap { IPIP | ICMP }    default: IPIP\n");
 	fprintf(stderr, "           --mtu <MTU_VALUE>          default: %d\n", DEFAULT_MTU);
 	
 	exit(1);
@@ -40,12 +44,24 @@ int main(int argc, char *argv[])
 		}
 		if (i + 1 < argc && strcmp(argv[i], "--name") == 0) {
 			strncpy(tun_name, argv[++i], IFNAMSIZ);
-		}
-		if (i + 1 < argc && strcmp(argv[i], "--mtu") == 0) {
+		} else if (i + 1 < argc && strcmp(argv[i], "--mtu") == 0) {
 			++i;
 			sscanf(argv[i], "%d", &mtu);
+		} else if (i + 1 < argc && strcmp(argv[i], "--encap") == 0) {
+			++i;
+			if (strcmp(argv[i], "IPIP") == 0) {
+				encap = new Encap_IPIP();
+			} else if (strcmp(argv[i], "ICMP") == 0) {
+				encap = new Encap_ICMP();
+			} else {
+				usage();
+			}
 		}
 	}
+
+	if (encap == NULL)
+		encap = new Encap_IPIP();
+	printf("Encap Mode: %s\n", encap->name());
 
 	//Create TUN/TAP interface
 	int tun_fd = tun_create(tun_name);
