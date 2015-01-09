@@ -87,7 +87,7 @@ int display_tc_mapping_table()
 	uint32_t size;
 	read(fd, &size, 4);
 	printf("Number of records: %d\n", size);
-	sout << "\"records\": \"" << size << ",\n";
+	sout << "\"records\": " << size << ",\n";
 	int i;
 	char addr_TI[100] = {0};
 	char addr6_TI[100] = {0};
@@ -105,21 +105,24 @@ int display_tc_mapping_table()
 		sout << "  {\n";
 		sout << "    \"ipv6-addr\": \"" << addr6_TI << "\",\n";
 		sout << "    \"ipv4-addr\": \"" << addr_TI << "\",\n";
-		sout << "    \"ipv4-addr\": \"" << addr_TI << "\",\n";
-		sout << "    \"portset-index\": \"" << binding.pset_index << "\",\n";
-		sout << "    \"portset-mask\": \"" << binding.pset_mask << "\",\n";
+		sout << "    \"aftr-addr\": \"" << addr6_TC << "\",\n";
+		sout << "    \"portset-index\": " << binding.pset_index << ",\n";
+		sout << "    \"portset-mask\": " << binding.pset_mask << ",\n";
 		sout << "    \"upstream-pkts\": " << binding.in_pkts << ",\n";
 		sout << "    \"downstream-pkts\": " << binding.out_pkts << ",\n";
 		sout << "    \"upstream-bytes\": " << binding.in_bytes << ",\n";
 		sout << "    \"downstream-bytes\": " << binding.out_bytes << "\n";
-		sout << "  }\n";
+		if (i+1==size)
+            sout << "  }\n";
+        else
+            sout << "  },\n";
 	}
 	sout << "]\n";
 	close(fd);
 	sout << "}\n";
 	
 	cout << sout.str();
-	fstream fout("binding.txt");
+	ofstream fout("binding.txt");
 	fout << sout.str();
 	
 	return 0;
