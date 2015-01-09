@@ -1,4 +1,4 @@
-CC     := gcc
+CC     := g++
 CFLAGS := -O2
 TARGET := manage
 OBJS   := main.o manage.o
@@ -6,10 +6,10 @@ OBJS   := main.o manage.o
 all: $(TARGET)
 
 $(TARGET) : $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET)
+	$(CC) -o $(TARGET) $(OBJS) $(CFLAGS)
 
-%.o: %.c
-	$(CC) -c $(CFLAGS) $< -o $@
+%.o: %.cpp
+	$(CC) -c -o $@ $<  $(CFLAGS)
 	
 clean :
 	rm -f $(TARGET)

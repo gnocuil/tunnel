@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <time.h>
 #include <memory.h>
+#include "manage.h"
 
 void usage()
 {
