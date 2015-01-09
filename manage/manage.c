@@ -14,7 +14,7 @@ static int init_fd()
 	struct sockaddr_un addr;
 	size_t len;
 	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {  
-		fprintf(stderr, "init_fd: failed to create socket: %m\n", errno);
+		fprintf(stderr, "init_fd: failed to create socket: %m\n");
 		return -1;
 	}
 	//name the socket
@@ -24,7 +24,7 @@ static int init_fd()
 	len = strlen(SERVER_NAME)  + offsetof(struct sockaddr_un, sun_path);
 	int result = connect(fd, (struct sockaddr*)&addr, len);
 	if (result < 0) {
-		fprintf(stderr, "init_fd: failed to connect: %m\n", errno);
+		fprintf(stderr, "init_fd: failed to connect: %m\n");
 		return -1;
 	}
 	return fd;

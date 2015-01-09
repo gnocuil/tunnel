@@ -10,6 +10,7 @@
 #include <netinet/tcp.h>
 #include <netinet/ip_icmp.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "tun.h"
 #include "binding.h"
@@ -25,7 +26,7 @@ int tun_create(char *dev)
 	int err;
 
 	if ((tun_fd = open("/dev/net/tun", O_RDWR)) < 0) {
-		fprintf(stderr, "tun_create: Error Creating TUN/TAP: %m\n", errno);
+		fprintf(stderr, "tun_create: Error Creating TUN/TAP: %m\n");
 		return -1;
 	}
 
@@ -37,13 +38,13 @@ int tun_create(char *dev)
 	}
 
 	if ((err = ioctl(tun_fd, TUNSETIFF, (void *)&ifr)) < 0) {
-		fprintf(stderr, "tun_create: Error Setting tunnel name %s: %m\n", dev, errno);
+		fprintf(stderr, "tun_create: Error Setting tunnel name %s: %m\n", dev);
 		close(tun_fd);
 		return -1;
 	}
 
 	if (fcntl(tun_fd, F_SETFL, O_NONBLOCK) < 0) {
-		fprintf(stderr, "tun_create: Error Setting nonblock: %m\n", dev, errno);
+		fprintf(stderr, "tun_create: Error Setting nonblock: %m\n");
 		return -1;
 	}
 
@@ -57,7 +58,7 @@ int tun_send(char *packet, int len)
 {
 	int count = write(tun_fd, packet, len);
 	if (count != len) {
-		fprintf(stderr, "tun_send : Error sending len=%d count=%d: %m\n", len, count, errno);
+		fprintf(stderr, "tun_send : Error sending len=%d count=%d: %m\n", len, count);
 		return -1;
 	}
 	return 0;

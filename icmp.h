@@ -57,7 +57,7 @@ public:
 	int init_socket() {
 		raw_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
 		if (raw_fd < 0) {
-			fprintf(stderr, "socket_init: Error Creating socket: %m\n", errno);
+			fprintf(stderr, "socket_init: Error Creating socket: %m\n");
 			return -1;
 		}
 		struct icmp6_filter filter;

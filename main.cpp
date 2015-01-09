@@ -31,6 +31,16 @@ static void usage()
 	exit(1);
 }
 
+void* thread_6to4(void* arg)
+{
+	int raw_fd = socket_init();
+	if (raw_fd < 0) {
+		exit(1);
+	}
+	while (1)
+		handle_socket();
+}
+
 int main(int argc, char *argv[])
 {
 	srand(time(NULL));
@@ -73,15 +83,9 @@ int main(int argc, char *argv[])
 	set_mtu(tun_name, mtu);//set mtu
 	interface_up(tun_name);//interface up
 
-	int pid = fork();
-	if (pid == 0) {//son
-		int raw_fd = socket_init();
-		if (raw_fd < 0) {
-			exit(1);
-		}
-		while (1)
-			handle_socket();
-	}
+	pthread_t tid;
+	pthread_create(&tid, NULL, thread_6to4, NULL);
+	
 	//father
 	socket_init_tun();
 /*
@@ -110,7 +114,7 @@ int main(int argc, char *argv[])
 		int ret = select(maxsock + 1, &set, NULL, NULL, NULL);
 		
 		if (ret < 0) {
-			fprintf(stderr, "main: Error in select: %m\n", errno);
+			fprintf(stderr, "main: Error in select: %m\n");
 			break;
 		}
 		if (FD_ISSET(binding_fd, &set)) {

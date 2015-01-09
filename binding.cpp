@@ -7,6 +7,8 @@
 #include <iostream>
 #include <errno.h>
 #include <fcntl.h>
+#include <unistd.h>
+#include <stddef.h>
 
 #include "binding.h"
 
@@ -91,7 +93,7 @@ int handle_binding()
 	
 	count = read(client_fd, &command, 1);
 	if (count != 1) {
-		fprintf(stderr, "handle_socket: Error reading command: %m\n", errno);
+		fprintf(stderr, "handle_socket: Error reading command: %m\n");
 		return -1;
 	}
 	Binding binding;
@@ -99,7 +101,7 @@ int handle_binding()
 		case TUNNEL_SET_MAPPING:
 			count = read(client_fd, &binding, sizeof(Binding));
 			if (count != sizeof(Binding)) {
-				fprintf(stderr, "handle_socket: Error reading: %m\n", errno);
+				fprintf(stderr, "handle_socket: Error reading: %m\n");
 				return -1;
 			}
 			insert(binding);
@@ -107,7 +109,7 @@ int handle_binding()
 		case TUNNEL_DEL_MAPPING:
 			count = read(client_fd, &binding, sizeof(Binding));
 			if (count != sizeof(Binding)) {
-				fprintf(stderr, "handle_socket: Error reading: %m\n", errno);
+				fprintf(stderr, "handle_socket: Error reading: %m\n");
 				return -1;
 			}
 			remove(binding);
@@ -147,12 +149,12 @@ int binding_init()
 	size_t server_len;
 
 	if ((server_fd = socket(AF_UNIX, SOCK_STREAM,  0)) == -1) {
-		fprintf(stderr, "binding_init: Failed to create socket: %m\n", errno);
+		fprintf(stderr, "binding_init: Failed to create socket: %m\n");
 		exit(1);
 	}
 	
 	if (fcntl(server_fd, F_SETFL, O_NONBLOCK) < 0) {
-		fprintf(stderr, "binding_init: Error Setting nonblock: %m\n", errno);
+		fprintf(stderr, "binding_init: Error Setting nonblock: %m\n");
 		return -1;
 	}
 	

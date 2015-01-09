@@ -53,7 +53,7 @@ int socket_init_tun()
 {
 	send6_fd = socket(PF_INET6, SOCK_RAW, IPPROTO_RAW);
 	if (send6_fd < 0) {
-		fprintf(stderr, "socket_init: Error Creating send socket: %m\n", errno);
+		fprintf(stderr, "socket_init: Error Creating send socket: %m\n");
 		return -1;
 	}
 }
@@ -106,7 +106,7 @@ int socket_send(char *buf, int len)
 	memcpy(&dest.sin6_addr, buf + 24, 16);
 	
 	if (sendto(send6_fd, buf, len, 0, (struct sockaddr *)&dest, sizeof(dest)) != len) {
-		fprintf(stderr, "socket_send: Failed to send ipv6 packet len=%d: %m\n", len, errno);
+		fprintf(stderr, "socket_send: Failed to send ipv6 packet len=%d: %m\n", len);
 		//for (int i = 0; i < len; ++i) printf("%d:%x ", i + 1, buf[i] & 0xFF);printf("\n");
 		return -1;
 	}
