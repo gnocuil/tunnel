@@ -13,6 +13,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/foreach.hpp>
 #include <sstream>
+#include <fstream>
 #include <string>
 #include <sys/time.h>
 
@@ -24,6 +25,7 @@ using std::cout;
 using std::string;
 using std::endl;
 using std::ostringstream;
+using std::ofstream;
 
 static int server_fd;
 
@@ -53,7 +55,7 @@ static uint16_t mask[] = {
 	0xFFFF
 };
 
-static unordered_map<uint64_t, Binding*> table;
+static unordered_map<uint64_t, BindingPtr> table;
 
 static inline uint64_t getkey(const Binding& record)
 {
@@ -65,16 +67,15 @@ static inline uint64_t getkey(uint32_t ip, uint16_t pset_mask, uint16_t pset_ind
 	return ((uint64_t)ip << 32) | (pset_mask <<16) | pset_index;
 }
 
-void insert(const Binding& record)
+void insert(BindingPtr record)
 {
-	uint64_t key = getkey(record);
+	uint64_t key = getkey(*record);
     pthread_rwlock_wrlock(&rwlock);
-	unordered_map<uint64_t, Binding*>::iterator it = table.find(key);
+	auto it = table.find(key);
 	if (it == table.end()) {//Insert
-		Binding *newrecord = new Binding(record);
-		table[key] = newrecord;
+		table[key] = record;
 	} else {//Modify
-		*(it->second) = record;
+		it->second = record;
 	}
     pthread_rwlock_unlock(&rwlock);
 }
@@ -83,24 +84,20 @@ void remove(const Binding& record)
 {
 	uint64_t key = getkey(record);
     pthread_rwlock_wrlock(&rwlock);
-	unordered_map<uint64_t, Binding*>::iterator it = table.find(key);
+	auto it = table.find(key);
 	if (it != table.end()) {//Insert
-		if (it->second != NULL) {
-			delete it->second;
-			//it->second = NULL;
-            table.erase(it);
-		}
+        table.erase(it);
 	}
     pthread_rwlock_unlock(&rwlock);
 }
 
-Binding* find(uint32_t ip, uint16_t port)
+BindingPtr find(uint32_t ip, uint16_t port)
 {
     pthread_rwlock_rdlock(&rwlock);
-    Binding* ret = NULL;
+    BindingPtr ret = BindingPtr();
 	for (int len = 16; len >= 0; --len) {
 		uint64_t key = getkey(ip, mask[len], mask[len] & port);
-		unordered_map<uint64_t, Binding*>::iterator it = table.find(key);
+		auto it = table.find(key);
 		if (it != table.end()) {//Found
 			ret = it->second;
             break;
@@ -117,7 +114,7 @@ string getJson()
     pthread_rwlock_rdlock(&rwlock);
 	sout << "\"records\": " << table.size() << ",\n";
     if (ip.size() > 0) {
-        sout << "\"ipv4-address\": " << ip << ",\n";
+        sout << "\"ipv4-address\": \"" << ip << "\",\n";
     }
 	int i;
 	char addr_TI[100] = {0};
@@ -125,14 +122,14 @@ string getJson()
 	char addr6_TC[100] = {0};
 	sout << "\"table\": [\n";
     bool first = true;
-    for (unordered_map<uint64_t, Binding*>::iterator it = table.begin(); it != table.end(); ++it) {
-		if (it->second != NULL) {
+    for (auto it = table.begin(); it != table.end(); ++it) {
+		if (it->second) {
             if (!first) {
                 sout << "  },\n";
             } else {
                 first = false;
             }
-            struct Binding *binding = it->second;
+            BindingPtr binding = it->second;
             inet_ntop(AF_INET, (void*)&binding->addr_TI, addr_TI, 16);
             inet_ntop(AF_INET6, (void*)&binding->addr6_TI, addr6_TI, 48);
             inet_ntop(AF_INET6, (void*)&binding->addr6_TC, addr6_TC, 48);
@@ -146,7 +143,9 @@ string getJson()
             sout << "    \"upstream-pkts\": " << binding->in_pkts << ",\n";
             sout << "    \"downstream-pkts\": " << binding->out_pkts << ",\n";
             sout << "    \"upstream-bytes\": " << binding->in_bytes << ",\n";
-            sout << "    \"downstream-bytes\": " << binding->out_bytes << "\n";
+            sout << "    \"downstream-bytes\": " << binding->out_bytes << ",\n";
+            sout << "    \"upstream-bps\": " << binding->in_bps << ",\n";
+            sout << "    \"downstream-bps\": " << binding->out_bps << "\n";
         }
 	}
     pthread_rwlock_unlock(&rwlock);
@@ -178,7 +177,7 @@ int handle_binding()
 				fprintf(stderr, "handle_socket: Error reading: %m\n");
 				return -1;
 			}
-			insert(binding);
+			insert(BindingPtr(new Binding(binding)));
 			break;
 		case TUNNEL_DEL_MAPPING:
 			count = read(client_fd, &binding, sizeof(Binding));
@@ -192,21 +191,15 @@ int handle_binding()
             pthread_rwlock_rdlock(&rwlock);
 			size = table.size();
 			count = write(client_fd, &size, 4);
-			for (unordered_map<uint64_t, Binding*>::iterator it = table.begin(); it != table.end(); ++it) {
-				if (it->second != NULL) {
-					count = write(client_fd, it->second, sizeof(Binding));
+			for (auto it = table.begin(); it != table.end(); ++it) {
+				if (it->second) {
+					count = write(client_fd, it->second.get(), sizeof(Binding));
 				}
 			}
             pthread_rwlock_unlock(&rwlock);
 			break;
 		case TUNNEL_FLUSH_MAPPING:
             pthread_rwlock_wrlock(&rwlock);
-			for (unordered_map<uint64_t, Binding*>::iterator it = table.begin(); it != table.end(); ++it) {
-				if (it->second != NULL) {
-					delete it->second;
-					it->second = NULL;
-				}
-			}
 			table.clear();
             pthread_rwlock_unlock(&rwlock);
 			break;
@@ -258,7 +251,6 @@ void binding_restore(std::string file)
 	using boost::property_tree::ptree;
 	ptree pt;
 	read_json(file, pt);
-    pthread_rwlock_wrlock(&rwlock);
 	try {
 		int records = pt.get<int>("records");
 		cout << "records="<<records<<endl;
@@ -280,30 +272,54 @@ void binding_restore(std::string file)
 			binding.in_bytes = v.second.get<uint64_t>("upstream-bytes");
 			binding.out_bytes = v.second.get<uint64_t>("downstream-bytes");
 			
-			insert(binding);
+			insert(BindingPtr(new Binding(binding)));
 		}
 	} catch (const std::exception& ex) {
 		fprintf(stderr, "Failed to restore bindings from file %s!\n", file.c_str());
 	}
 	try {
 		ip = pt.get<std::string>("ipv4-address");
-		cout << "iface ip=" << ip;
+		cout << "iface ip=" << ip << endl;
         string cmd = "ip addr add " + ip + " dev " + tun_name;
         system(cmd.c_str());
 	} catch (const std::exception& ex) {
 	}
-    pthread_rwlock_unlock(&rwlock);
 }
 double current_time;
+extern string conffile;
 void* timer(void* arg)
 {
     struct timeval t0;
     gettimeofday(&t0, NULL);
+    double last_bps_update = 0;
+    double last_conf_update = 0;
     while (true) {
         struct timeval t1;
         gettimeofday(&t1, NULL);
         current_time = (t1.tv_sec - t0.tv_sec) + (t1.tv_usec - t0.tv_usec) / 1000000.0;
-        printf("timer... time=%lf\n", current_time);
+        if (current_time > last_bps_update + 3) {
+            double cur = current_time - last_bps_update;
+            last_bps_update = current_time;
+            pthread_rwlock_wrlock(&rwlock);
+            for (auto it = table.begin(); it != table.end(); ++it) {
+                if (it->second != NULL) {
+                    BindingPtr binding = it->second;
+                    binding->in_bps = binding->in_bytes_cur * 8 / cur;
+                    binding->out_bps = binding->out_bytes_cur * 8 / cur;
+                    binding->in_bytes_cur = binding->out_bytes_cur = 0;
+                }
+            }
+            pthread_rwlock_unlock(&rwlock);
+        }
+        if (current_time > last_conf_update + 10) {
+            last_conf_update = current_time;
+            //puts("update conf file");
+            string cmd = "cp " + conffile + " " + conffile + ".bak";
+            system(cmd.c_str());
+            string json = getJson();
+            ofstream fout(conffile);
+            fout << json;
+        }
         sleep(1);
     }
 }

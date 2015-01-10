@@ -18,7 +18,7 @@ public:
 	}
 	int makepacket(int len) {
 		uint32_t ip = *(uint32_t*)(buf + 40 + 16);
-		Binding* binding = find(ip, getport_dest(buf + 40));
+		BindingPtr binding = find(ip, getport_dest(buf + 40));
 		if (!binding) {
 			return -1;
 		}

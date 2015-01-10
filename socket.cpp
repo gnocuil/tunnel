@@ -44,7 +44,7 @@ static void count() {
     char *buf = encap->send4buf();
     int len = encap->send4len();
 	uint32_t ip = *(uint32_t*)(buf + 12);
-	Binding* binding = find(ip, getport_src(buf));
+	BindingPtr binding = find(ip, getport_src(buf));
 	if (!binding) {
 		return;
 	}

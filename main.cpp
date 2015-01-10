@@ -44,6 +44,13 @@ void* thread_6to4(void* arg)
 		handle_socket();
 }
 
+void* thread_binding(void* arg)
+{
+
+	while (1)
+		handle_binding();
+}
+
 extern char tun_name[IFNAMSIZ];
 
 int main(int argc, char *argv[])
@@ -111,11 +118,12 @@ int main(int argc, char *argv[])
 //		maxsock = raw_fd;
 	if (binding_fd > maxsock)
 		maxsock = binding_fd;
+    pthread_create(&tid, NULL, thread_binding, NULL);
 	while (1) {
 		FD_ZERO(&set);
 		FD_SET(tun_fd, &set);
 //		FD_SET(raw_fd, &set);
-		FD_SET(binding_fd, &set);
+//		FD_SET(binding_fd, &set);
 		
 		int ret = select(maxsock + 1, &set, NULL, NULL, NULL);
 		
