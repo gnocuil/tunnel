@@ -156,6 +156,44 @@ string getJson()
 	return sout.str();
 }
 
+static void http_server(int fd, char *buf, int len)
+{
+	cout << "httpsrv:" << buf << endl;
+	int i = 0;
+	string cmd;
+	for (; i < len; ++i) {
+		if (buf[i] == ' ') break;
+		cmd += buf[i];
+	}
+	if (i++ >= len) return;
+	string path;
+	for (; i < len; ++i) {
+		if (buf[i] == ' ') break;
+		path += buf[i];
+	}
+	if (i >= len) return;
+	int pos;
+	if ((pos = path.find('?')) != string::npos) {
+		string att = path.substr(pos + 1);
+		path = path.substr(0, pos);
+//		cout << "att="<<att<<endl;
+	}
+//	cout<<"cmd="<<cmd<<" path="<<path<<endl;
+	if (cmd == "GET") {
+		if (path == "/query") {
+			string json = getJson();
+			string header = "HTTP/1.1 200 OK\r\n";
+			header += "Content-Type: application/json; charset=UTF-8\r\n";
+			char size[100] = {0};
+			sprintf(size, "%d", (int)json.size());
+			header += "Content-Length: " + string(size) + "\r\n";
+			header += "\r\n";
+			header += json;
+			int count = write(fd, header.c_str(), header.size());
+		}
+	}
+}
+
 int handle_binding()
 {
 	int client_fd = accept(server_fd, NULL, NULL);
@@ -170,6 +208,7 @@ int handle_binding()
 		return -1;
 	}
 	Binding binding;
+	char buf[65536] = {0};
 	switch (command) {
 		case TUNNEL_SET_MAPPING:
 			count = read(client_fd, &binding, sizeof(Binding));
@@ -208,6 +247,11 @@ int handle_binding()
 			count = write(client_fd, &size, 4);			
 			break;
 		default:
+			buf[0] = command;
+			count = read(client_fd, buf + 1, sizeof(buf) - 1);
+			if (count > 0) {
+				http_server(client_fd, buf, count + 1);
+			}
 			break;
 	};
 	close(client_fd);
@@ -281,7 +325,7 @@ void binding_restore(std::string file)
 		ip = pt.get<std::string>("ipv4-address");
 		cout << "iface ip=" << ip << endl;
         string cmd = "ip addr add " + ip + " dev " + tun_name;
-        system(cmd.c_str());
+        int t = system(cmd.c_str());
 	} catch (const std::exception& ex) {
 	}
 }
@@ -315,7 +359,7 @@ void* timer(void* arg)
             last_conf_update = current_time;
             //puts("update conf file");
             string cmd = "cp " + conffile + " " + conffile + ".bak";
-            system(cmd.c_str());
+            int t = system(cmd.c_str());
             string json = getJson();
             ofstream fout(conffile);
             fout << json;
