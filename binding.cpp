@@ -9,6 +9,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stddef.h>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/foreach.hpp>
 
 #include "binding.h"
 
@@ -168,4 +171,43 @@ int binding_init()
 	bind(server_fd, (struct sockaddr *)&server_addr, server_len);
 	listen(server_fd, 5);
 	return server_fd;
+}
+
+void binding_restore(std::string file)
+{
+	using boost::property_tree::ptree;
+	ptree pt;
+	read_json(file, pt);
+
+	try {
+		int records = pt.get<int>("records");
+		cout << "records="<<records<<endl;
+		BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("table")) {
+			struct Binding binding;
+			memset(&binding, 0, sizeof(struct Binding));
+
+			string addr6_TI = v.second.get<string>("ipv6-addr");
+			string addr_TI = v.second.get<string>("ipv4-addr");
+			string addr6_TC = v.second.get<string>("aftr-addr");
+			inet_pton(AF_INET, addr_TI.c_str(), &binding.addr_TI);
+			inet_pton(AF_INET6, addr6_TI.c_str(), &binding.addr6_TI);
+			inet_pton(AF_INET6, addr6_TC.c_str(), &binding.addr6_TC);
+			
+			binding.pset_index = v.second.get<uint16_t>("portset-index");
+			binding.pset_mask = v.second.get<uint16_t>("portset-mask");
+			binding.in_pkts = v.second.get<uint64_t>("upstream-pkts");
+			binding.out_pkts = v.second.get<uint64_t>("downstream-pkts");
+			binding.in_bytes = v.second.get<uint64_t>("upstream-bytes");
+			binding.out_bytes = v.second.get<uint64_t>("downstream-bytes");
+			
+			cout << "addr6=" << addr6_TI << " ";
+			cout << "addr4=" << addr_TI << " ";
+			cout << "AFdr6=" << addr6_TC << " ";
+			cout << "pset=" << binding.pset_index << " " << binding.pset_mask << "  ";
+			cout << endl;
+			insert(binding);
+		}
+	} catch (const std::exception& ex) {
+		fprintf(stderr, "Failed to restore bindings from file %s!\n", file.c_str());
+	}
 }

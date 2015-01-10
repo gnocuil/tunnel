@@ -82,22 +82,20 @@ int main(int argc, char *argv[])
 
 	set_mtu(tun_name, mtu);//set mtu
 	interface_up(tun_name);//interface up
+	
+	int binding_fd = binding_init();
+	if (binding_fd < 0) {
+		exit(1);
+	}
+	
+	binding_restore("binding.txt");
+
 
 	pthread_t tid;
 	pthread_create(&tid, NULL, thread_6to4, NULL);
 	
 	//father
 	socket_init_tun();
-/*
-	int raw_fd = socket_init();
-	if (raw_fd < 0) {
-		exit(1);
-	}
-*/	
-	int binding_fd = binding_init();
-	if (binding_fd < 0) {
-		exit(1);
-	}
 
 	fd_set set;
 	int maxsock = tun_fd;

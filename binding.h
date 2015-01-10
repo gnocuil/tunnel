@@ -17,8 +17,8 @@ struct Binding {
    struct in6_addr addr6_TI, addr6_TC;
    uint16_t pset_index, pset_mask; //port set
    uint32_t seconds;//lease time remaining
-   uint64_t in_pkts, in_bytes;
-   uint64_t out_pkts, out_bytes;
+   uint64_t in_pkts, in_bytes;//in:upstream, 4o6 in, v4 out
+   uint64_t out_pkts, out_bytes;//out:downstream, v4 in, 4o6 out
 };
 
 void insert(const Binding& record);
@@ -27,3 +27,5 @@ Binding* find(uint32_t ip, uint16_t port);
 
 int binding_init();
 int handle_binding();
+
+void binding_restore(std::string file);
