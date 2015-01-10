@@ -22,6 +22,7 @@ public:
 		if (!binding) {
 			return -1;
 		}
+        binding->count_4to6(len);
 		struct ip6_hdr *ip6hdr = (struct ip6_hdr *)buf;
 		ip6hdr->ip6_flow = htonl((6 << 28) | (0 << 20) | 0);		
 		ip6hdr->ip6_plen = htons(len & 0xFFFF);

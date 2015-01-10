@@ -98,8 +98,51 @@ uint16_t getport_dest(char *ippacket)
 				break;
 		}
 	} 
-	if ((flags & 1) && frag_off == 0)
+	if ((flags & 1) && frag_off == 0) {
 		bigpacket[iph->id] = ret;
+        //fprintf(stderr, "Set Frag: %d -> %d\n", iph->id, ret);
+    }
+	return ret;
+}
+
+static uint16_t bigpacket2[65536];
+uint16_t getport_src(char *ippacket)
+{
+	struct iphdr *iph = (struct iphdr*)ippacket;
+	uint16_t ret = 0;
+	uint8_t flags = (uint8_t)(ntohs(iph->frag_off) >> 13);
+	//fragment offset
+	uint16_t frag_off = ntohs(iph->frag_off) & 0x1FFF;
+	
+	//for fragmented ipv4 packets, choose the port number in the first packet
+	if (frag_off != 0)
+		return bigpacket2[iph->id];
+	
+	int protoff = iph -> ihl * 4;
+	if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP) {
+		struct tcphdr* tcph = (struct tcphdr*)(ippacket + protoff);
+		ret = ntohs(tcph->source);
+	} else if (iph->protocol == IPPROTO_ICMP) {
+		struct icmp *icmph = (struct icmp*)(ippacket + protoff);
+		switch (icmph->icmp_type) {
+			case ICMP_ECHOREPLY:
+			case ICMP_ECHO:
+				ret = htons(icmph->icmp_id);
+				break;
+			default:
+				iph = (struct iphdr*) (((uint8_t*)icmph) + 8);
+				protoff = iph -> ihl * 4;
+				if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP) {
+					struct tcphdr* tcph = (struct tcphdr*) (iph + protoff);
+					ret = ntohs(tcph->dest);
+				}
+				break;
+		}
+	} 
+	if ((flags & 1) && frag_off == 0) {
+		bigpacket2[iph->id] = ret;
+        //fprintf(stderr, "Set Frag: %d -> %d\n", iph->id, ret);
+    }
 	return ret;
 }
 

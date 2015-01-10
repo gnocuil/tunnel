@@ -1,1 +1,4 @@
 binding.txt
+*.o
+tunnel
+manage

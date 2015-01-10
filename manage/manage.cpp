@@ -18,23 +18,20 @@ using namespace std;
 static int init_fd()
 {
 	int fd;
-	struct sockaddr_un addr;
-	size_t len;
-	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {  
+	if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {  
 		fprintf(stderr, "init_fd: failed to create socket: %m\n");
 		return -1;
 	}
-	//name the socket
-	addr.sun_family = AF_UNIX;
-	strcpy(addr.sun_path, SERVER_NAME);
-	addr.sun_path[0]=0;
-	len = strlen(SERVER_NAME)  + offsetof(struct sockaddr_un, sun_path);
-	int result = connect(fd, (struct sockaddr*)&addr, len);
-	if (result < 0) {
-		fprintf(stderr, "init_fd: failed to connect: %m\n");
-		return -1;
-	}
-	return fd;
+    struct sockaddr_in serv_addr;
+    memset((char *) &serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(8080);
+    inet_aton("127.0.0.1", &serv_addr.sin_addr);
+    if (connect(fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        perror("ERROR connecting");
+        exit(0);
+    }
+    return fd;
 }
 
 int set_mapping(struct in_addr addr_TI, struct in6_addr addr6_TI, uint16_t pset_index, uint16_t pset_mask, struct in6_addr addr6_TC, uint32_t seconds)
@@ -121,7 +118,7 @@ int display_tc_mapping_table()
 	close(fd);
 	sout << "}\n";
 	
-	cout << sout.str();
+	//cout << sout.str();
 	ofstream fout("binding.txt");
 	fout << sout.str();
 	

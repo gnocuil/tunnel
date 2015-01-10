@@ -12,12 +12,26 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/foreach.hpp>
+#include <sstream>
+#include <string>
+#include <sys/time.h>
 
 #include "binding.h"
 
-using namespace std;
+//using namespace std;
+using std::unordered_map;
+using std::cout;
+using std::string;
+using std::endl;
+using std::ostringstream;
 
 static int server_fd;
+
+static string ip;
+
+char tun_name[IFNAMSIZ] = {0};
+
+static pthread_rwlock_t  rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 static uint16_t mask[] = {
 	0x0,
@@ -54,6 +68,7 @@ static inline uint64_t getkey(uint32_t ip, uint16_t pset_mask, uint16_t pset_ind
 void insert(const Binding& record)
 {
 	uint64_t key = getkey(record);
+    pthread_rwlock_wrlock(&rwlock);
 	unordered_map<uint64_t, Binding*>::iterator it = table.find(key);
 	if (it == table.end()) {//Insert
 		Binding *newrecord = new Binding(record);
@@ -61,30 +76,85 @@ void insert(const Binding& record)
 	} else {//Modify
 		*(it->second) = record;
 	}
+    pthread_rwlock_unlock(&rwlock);
 }
 
 void remove(const Binding& record)
 {
 	uint64_t key = getkey(record);
+    pthread_rwlock_wrlock(&rwlock);
 	unordered_map<uint64_t, Binding*>::iterator it = table.find(key);
 	if (it != table.end()) {//Insert
 		if (it->second != NULL) {
 			delete it->second;
-			it->second = NULL;
+			//it->second = NULL;
+            table.erase(it);
 		}
 	}
+    pthread_rwlock_unlock(&rwlock);
 }
 
 Binding* find(uint32_t ip, uint16_t port)
 {
+    pthread_rwlock_rdlock(&rwlock);
+    Binding* ret = NULL;
 	for (int len = 16; len >= 0; --len) {
 		uint64_t key = getkey(ip, mask[len], mask[len] & port);
 		unordered_map<uint64_t, Binding*>::iterator it = table.find(key);
 		if (it != table.end()) {//Found
-			return it->second;
+			ret = it->second;
+            break;
 		}
 	}
-	return NULL;
+    pthread_rwlock_unlock(&rwlock);
+	return ret;
+}
+
+string getJson()
+{
+	ostringstream sout;
+	sout << "{\n";
+    pthread_rwlock_rdlock(&rwlock);
+	sout << "\"records\": " << table.size() << ",\n";
+    if (ip.size() > 0) {
+        sout << "\"ipv4-address\": " << ip << ",\n";
+    }
+	int i;
+	char addr_TI[100] = {0};
+	char addr6_TI[100] = {0};
+	char addr6_TC[100] = {0};
+	sout << "\"table\": [\n";
+    bool first = true;
+    for (unordered_map<uint64_t, Binding*>::iterator it = table.begin(); it != table.end(); ++it) {
+		if (it->second != NULL) {
+            if (!first) {
+                sout << "  },\n";
+            } else {
+                first = false;
+            }
+            struct Binding *binding = it->second;
+            inet_ntop(AF_INET, (void*)&binding->addr_TI, addr_TI, 16);
+            inet_ntop(AF_INET6, (void*)&binding->addr6_TI, addr6_TI, 48);
+            inet_ntop(AF_INET6, (void*)&binding->addr6_TC, addr6_TC, 48);
+            sout << "  {\n";
+            sout << "    \"key\": " << getkey(*binding) << ",\n";
+            sout << "    \"ipv6-addr\": \"" << addr6_TI << "\",\n";
+            sout << "    \"ipv4-addr\": \"" << addr_TI << "\",\n";
+            sout << "    \"aftr-addr\": \"" << addr6_TC << "\",\n";
+            sout << "    \"portset-index\": " << binding->pset_index << ",\n";
+            sout << "    \"portset-mask\": " << binding->pset_mask << ",\n";
+            sout << "    \"upstream-pkts\": " << binding->in_pkts << ",\n";
+            sout << "    \"downstream-pkts\": " << binding->out_pkts << ",\n";
+            sout << "    \"upstream-bytes\": " << binding->in_bytes << ",\n";
+            sout << "    \"downstream-bytes\": " << binding->out_bytes << "\n";
+        }
+	}
+    pthread_rwlock_unlock(&rwlock);
+    if (!first)
+        sout << "  }\n";
+	sout << "]\n";
+	sout << "}\n";
+	return sout.str();
 }
 
 int handle_binding()
@@ -93,10 +163,11 @@ int handle_binding()
 	uint8_t command;
 	int count;
 	uint32_t size;
-	
+	cout <<getJson();
 	count = read(client_fd, &command, 1);
 	if (count != 1) {
-		fprintf(stderr, "handle_socket: Error reading command: %m\n");
+		fprintf(stderr, "handle_socket: Error reading command: count=%d %m\n", count);
+        close(client_fd);
 		return -1;
 	}
 	Binding binding;
@@ -118,6 +189,7 @@ int handle_binding()
 			remove(binding);
 			break;
 		case TUNNEL_GET_MAPPING:
+            pthread_rwlock_rdlock(&rwlock);
 			size = table.size();
 			count = write(client_fd, &size, 4);
 			for (unordered_map<uint64_t, Binding*>::iterator it = table.begin(); it != table.end(); ++it) {
@@ -125,8 +197,10 @@ int handle_binding()
 					count = write(client_fd, it->second, sizeof(Binding));
 				}
 			}
+            pthread_rwlock_unlock(&rwlock);
 			break;
 		case TUNNEL_FLUSH_MAPPING:
+            pthread_rwlock_wrlock(&rwlock);
 			for (unordered_map<uint64_t, Binding*>::iterator it = table.begin(); it != table.end(); ++it) {
 				if (it->second != NULL) {
 					delete it->second;
@@ -134,6 +208,7 @@ int handle_binding()
 				}
 			}
 			table.clear();
+            pthread_rwlock_unlock(&rwlock);
 			break;
 		case TUNNEL_MAPPING_NUM:
 			size = table.size();
@@ -151,25 +226,30 @@ int binding_init()
 	struct sockaddr_un server_addr; 
 	size_t server_len;
 
-	if ((server_fd = socket(AF_UNIX, SOCK_STREAM,  0)) == -1) {
+	if ((server_fd = socket(AF_INET6, SOCK_STREAM, 0)) < 0) {
 		fprintf(stderr, "binding_init: Failed to create socket: %m\n");
 		exit(1);
 	}
-	
-	if (fcntl(server_fd, F_SETFL, O_NONBLOCK) < 0) {
-		fprintf(stderr, "binding_init: Error Setting nonblock: %m\n");
-		return -1;
-	}
-	
-	//name the socket
-	server_addr.sun_family = AF_UNIX;
-	strcpy(server_addr.sun_path, SERVER_NAME);
-	server_addr.sun_path[0]=0;
-	//server_len = sizeof(server_addr);
-	server_len = strlen(SERVER_NAME)  + offsetof(struct sockaddr_un, sun_path);
-	
-	bind(server_fd, (struct sockaddr *)&server_addr, server_len);
-	listen(server_fd, 5);
+	int no = 0;
+    int yes = 1;
+	setsockopt(server_fd, IPPROTO_IPV6, IPV6_V6ONLY, &no, sizeof(no));
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    
+    struct sockaddr_in6 serv_addr;
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin6_family = AF_INET6;
+    serv_addr.sin6_addr = in6addr_any;
+    serv_addr.sin6_port = htons(8080);
+    if (bind(server_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) == -1)  {
+        perror("error in bind()");
+        exit(0);
+    }
+
+    if (listen(server_fd, 10) != 0)  {
+        perror("error in listen()");
+        exit(0);
+    }
+
 	return server_fd;
 }
 
@@ -178,7 +258,7 @@ void binding_restore(std::string file)
 	using boost::property_tree::ptree;
 	ptree pt;
 	read_json(file, pt);
-
+    pthread_rwlock_wrlock(&rwlock);
 	try {
 		int records = pt.get<int>("records");
 		cout << "records="<<records<<endl;
@@ -200,14 +280,30 @@ void binding_restore(std::string file)
 			binding.in_bytes = v.second.get<uint64_t>("upstream-bytes");
 			binding.out_bytes = v.second.get<uint64_t>("downstream-bytes");
 			
-			cout << "addr6=" << addr6_TI << " ";
-			cout << "addr4=" << addr_TI << " ";
-			cout << "AFdr6=" << addr6_TC << " ";
-			cout << "pset=" << binding.pset_index << " " << binding.pset_mask << "  ";
-			cout << endl;
 			insert(binding);
 		}
 	} catch (const std::exception& ex) {
 		fprintf(stderr, "Failed to restore bindings from file %s!\n", file.c_str());
 	}
+	try {
+		ip = pt.get<std::string>("ipv4-address");
+		cout << "iface ip=" << ip;
+        string cmd = "ip addr add " + ip + " dev " + tun_name;
+        system(cmd.c_str());
+	} catch (const std::exception& ex) {
+	}
+    pthread_rwlock_unlock(&rwlock);
+}
+double current_time;
+void* timer(void* arg)
+{
+    struct timeval t0;
+    gettimeofday(&t0, NULL);
+    while (true) {
+        struct timeval t1;
+        gettimeofday(&t1, NULL);
+        current_time = (t1.tv_sec - t0.tv_sec) + (t1.tv_usec - t0.tv_usec) / 1000000.0;
+        printf("timer... time=%lf\n", current_time);
+        sleep(1);
+    }
 }

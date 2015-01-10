@@ -35,6 +35,7 @@ public:
 		if (!binding) {
 			return -1;
 		}
+        binding->count_4to6(len);
 		struct icmp6_hdr *icmp6hdr = (struct icmp6_hdr*)(buf + 40);
 		icmp6hdr->icmp6_type = ICMP6_ECHO_REPLY;
 		icmp6hdr->icmp6_code = 0;

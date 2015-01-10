@@ -21,13 +21,16 @@ using namespace std;
 
 #define DEFAULT_MTU 1460
 
+string conffile = "/etc/lw4over6.conf";
+
 static void usage()
 {
 	fprintf(stderr, "Usage: tunnel [options]\n");
 	fprintf(stderr, "  options: --name <TUNNEL_NAME>       default: 4over6\n");
 	fprintf(stderr, "           --encap { IPIP | ICMP }    default: IPIP\n");
 	fprintf(stderr, "           --mtu <MTU_VALUE>          default: %d\n", DEFAULT_MTU);
-	
+    fprintf(stderr, "           --config <CONFIG_FILE>     default: %s\n", conffile.c_str());
+    
 	exit(1);
 }
 
@@ -41,10 +44,11 @@ void* thread_6to4(void* arg)
 		handle_socket();
 }
 
+extern char tun_name[IFNAMSIZ];
+
 int main(int argc, char *argv[])
 {
 	srand(time(NULL));
-	char tun_name[IFNAMSIZ] = {0};
 	strncpy(tun_name, TUNNEL_NAME, IFNAMSIZ);
 	mtu = DEFAULT_MTU;
 	
@@ -66,12 +70,15 @@ int main(int argc, char *argv[])
 			} else {
 				usage();
 			}
+        } else if (i + 1 < argc && strcmp(argv[i], "--config") == 0) {
+            ++i;
+            conffile = argv[i];
 		}
 	}
 
 	if (encap == NULL)
 		encap = new Encap_IPIP();
-	printf("Encap Mode: %s\n", encap->name());
+	fprintf(stderr, "Encap Mode: %s\n", encap->name());
 
 	//Create TUN/TAP interface
 	int tun_fd = tun_create(tun_name);
@@ -79,6 +86,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	fprintf(stderr, "interface name: %s\n", tun_name);
+    fprintf(stderr, "Reload configuration file: %s\n", conffile.c_str());
 
 	set_mtu(tun_name, mtu);//set mtu
 	interface_up(tun_name);//interface up
@@ -88,10 +96,10 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	
-	binding_restore("binding.txt");
-
+	binding_restore(conffile);
 
 	pthread_t tid;
+	pthread_create(&tid, NULL, timer, NULL);
 	pthread_create(&tid, NULL, thread_6to4, NULL);
 	
 	//father
