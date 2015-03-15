@@ -12,6 +12,8 @@
 #define TUNNEL_FLUSH_MAPPING  0x1b
 #define TUNNEL_MAPPING_NUM	 0x1c
 
+#define BPS_SECONDS 5
+
 struct Binding {
 	struct in_addr addr_TI;
 	struct in6_addr addr6_TI, addr6_TC;
@@ -20,8 +22,8 @@ struct Binding {
 	uint64_t in_pkts, in_bytes;//in:upstream, 4o6 in, v4 out
 	uint64_t out_pkts, out_bytes;//out:downstream, v4 in, 4o6 out
     
-    uint64_t in_bytes_cur;
-    uint64_t out_bytes_cur;
+    uint64_t in_bytes_cur[BPS_SECONDS];
+    uint64_t out_bytes_cur[BPS_SECONDS];
     uint64_t in_bps, out_bps;
     
     //uint16_t bigpacket_6to4[65536];
@@ -36,7 +38,8 @@ struct Binding {
         in_pkts = in_bytes = 0;
         out_pkts = out_bytes = 0;
         
-        in_bytes_cur = out_bytes_cur = 0;
+        memset(in_bytes_cur, 0, sizeof(in_bytes_cur));
+        memset(out_bytes_cur, 0, sizeof(out_bytes_cur));
         in_bps = out_bps = 0;
         //memset(bigpacket_6to4, 0, sizeof(bigpacket_6to4));
         //memset(bigpacket_4to6, 0, sizeof(bigpacket_4to6));
@@ -45,13 +48,13 @@ struct Binding {
     void count_4to6(int pkt4len) {
         ++out_pkts;
         out_bytes += pkt4len;
-        out_bytes_cur += pkt4len;
+        out_bytes_cur[0] += pkt4len;
     }
     
     void count_6to4(int pkt6len) {
         ++in_pkts;
         in_bytes += pkt6len;
-        in_bytes_cur += pkt6len;
+        in_bytes_cur[0] += pkt6len;
     }
 	
 };

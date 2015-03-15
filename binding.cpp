@@ -116,6 +116,12 @@ string getJson()
     if (ip.size() > 0) {
         sout << "\"ipv4-address\": \"" << ip << "\",\n";
     }
+	//time
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    long long current_time = (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000;
+	sout << "\"time\": " << current_time << ",\n";
+	
 	int i;
 	char addr_TI[100] = {0};
 	char addr6_TI[100] = {0};
@@ -156,33 +162,52 @@ string getJson()
 	return sout.str();
 }
 
-static void http_server(int fd, char *buf, int len)
+static int http_server(int fd, char *buf, int len)
 {
-	cout << "httpsrv:" << buf << endl;
 	int i = 0;
 	string cmd;
 	for (; i < len; ++i) {
 		if (buf[i] == ' ') break;
 		cmd += buf[i];
 	}
-	if (i++ >= len) return;
+	if (i++ >= len) return 1;
 	string path;
 	for (; i < len; ++i) {
 		if (buf[i] == ' ') break;
 		path += buf[i];
 	}
-	if (i >= len) return;
+	if (i >= len) return 1;
 	int pos;
 	if ((pos = path.find('?')) != string::npos) {
 		string att = path.substr(pos + 1);
 		path = path.substr(0, pos);
 //		cout << "att="<<att<<endl;
 	}
-//	cout<<"cmd="<<cmd<<" path="<<path<<endl;
-	if (cmd == "GET") {
+	cout<<"cmd="<<cmd<<" path="<<path<< endl;
+    char fbuf[65536] = {0};
+    bool found = false;
+    if (cmd == "GET") {
+        if (path.size() > 5 && path.substr(path.size() - 5, 5) == ".html") {
+            if (path[0] == '/') path = path.substr(1);
+            FILE *fin = fopen(path.c_str(), "r");
+            if (fin) {
+                int count = fread(fbuf, 1, sizeof(fbuf), fin);
+                fclose(fin);
+                string header = "HTTP/1.1 200 OK\r\n";
+                header += "Content-Type: text/html\r\n";
+                char size[100] = {0};
+                sprintf(size, "%d", count);
+                header += "Content-Length: " + string(size) + "\r\n";
+                header += "\r\n";
+                int count2 = write(fd, header.c_str(), header.size());
+                count2 = write(fd, fbuf, count);
+                found = true;
+            }
+        }
+	} else if (cmd == "POST") {
 		if (path == "/query") {
 			string json = getJson();
-			string header = "HTTP/1.1 200 OK\r\n";
+			string header = "HTTP/1.0 200 OK\r\n";
 			header += "Content-Type: application/json; charset=UTF-8\r\n";
 			char size[100] = {0};
 			sprintf(size, "%d", (int)json.size());
@@ -190,8 +215,11 @@ static void http_server(int fd, char *buf, int len)
 			header += "\r\n";
 			header += json;
 			int count = write(fd, header.c_str(), header.size());
+            found = true;
 		}
 	}
+    if (found) return 0;
+    return 1;
 }
 
 int handle_binding()
@@ -200,7 +228,6 @@ int handle_binding()
 	uint8_t command;
 	int count;
 	uint32_t size;
-	cout <<getJson();
 	count = read(client_fd, &command, 1);
 	if (count != 1) {
 		fprintf(stderr, "handle_socket: Error reading command: count=%d %m\n", count);
@@ -250,7 +277,16 @@ int handle_binding()
 			buf[0] = command;
 			count = read(client_fd, buf + 1, sizeof(buf) - 1);
 			if (count > 0) {
-				http_server(client_fd, buf, count + 1);
+				if (http_server(client_fd, buf, count + 1)) {
+                    string header = "HTTP/1.0 404 Not Found\r\n";
+                    header += "Content-Type: text/html\r\n";
+                    char size[100] = {0};
+                    sprintf(size, "%d", 0);
+                    header += "Content-Length: " + string(size) + "\r\n";
+                    header += "\r\n";
+                    //header += json;
+                    int count = write(client_fd, header.c_str(), header.size());
+                }
 			}
 			break;
 	};
@@ -282,7 +318,7 @@ int binding_init()
         exit(0);
     }
 
-    if (listen(server_fd, 10) != 0)  {
+    if (listen(server_fd, 1000) != 0)  {
         perror("error in listen()");
         exit(0);
     }
@@ -337,25 +373,42 @@ void* timer(void* arg)
     gettimeofday(&t0, NULL);
     double last_bps_update = 0;
     double last_conf_update = 0;
+    double timestamp[BPS_SECONDS] = {0};
     while (true) {
         struct timeval t1;
         gettimeofday(&t1, NULL);
         current_time = (t1.tv_sec - t0.tv_sec) + (t1.tv_usec - t0.tv_usec) / 1000000.0;
-        if (current_time > last_bps_update + 3) {
+        if (current_time > last_bps_update + 0.5) {
             double cur = current_time - last_bps_update;
             last_bps_update = current_time;
             pthread_rwlock_wrlock(&rwlock);
             for (auto it = table.begin(); it != table.end(); ++it) {
                 if (it->second != NULL) {
                     BindingPtr binding = it->second;
-                    binding->in_bps = binding->in_bytes_cur * 8 / cur;
-                    binding->out_bps = binding->out_bytes_cur * 8 / cur;
-                    binding->in_bytes_cur = binding->out_bytes_cur = 0;
+                    uint64_t inbyte = 0;
+                    uint64_t outbyte = 0;
+                    for (int i = 0; i < BPS_SECONDS; ++i) {
+                        inbyte += binding->in_bytes_cur[i];
+                        outbyte += binding->out_bytes_cur[i];
+                    }
+                    double tt = current_time - timestamp[BPS_SECONDS-1];
+                    binding->in_bps = inbyte * 8 / tt;
+                    binding->out_bps = outbyte * 8 / tt;
+                    for (int i = BPS_SECONDS-1; i > 0; --i) {
+                        binding->in_bytes_cur[i] = binding->in_bytes_cur[i-1];
+                        binding->out_bytes_cur[i] = binding->out_bytes_cur[i-1];
+                    }
+                    binding->in_bytes_cur[0] = 0;
+                    binding->out_bytes_cur[0] = 0;
                 }
             }
+            for (int i = BPS_SECONDS-1; i > 0; --i) {
+                timestamp[i] = timestamp[i-1];
+            }
+            timestamp[0] = current_time;
             pthread_rwlock_unlock(&rwlock);
         }
-        if (current_time > last_conf_update + 10) {
+        if (current_time > last_conf_update + 0.5) {
             last_conf_update = current_time;
             //puts("update conf file");
             string cmd = "cp " + conffile + " " + conffile + ".bak";
