@@ -26,6 +26,8 @@ using std::string;
 using std::endl;
 using std::ostringstream;
 using std::ofstream;
+using std::hex;
+using std::oct;
 
 static int server_fd;
 
@@ -59,12 +61,12 @@ static unordered_map<uint64_t, BindingPtr> table;
 
 static inline uint64_t getkey(const Binding& record)
 {
-	return ((uint64_t)record.addr_TI.s_addr << 32) | (record.pset_mask <<16) | record.pset_index;
+	return (((uint64_t)record.addr_TI.s_addr) << 32) | ((record.pset_mask <<16)&0xffff0000) | (record.pset_index&0xffff);
 }
 
 static inline uint64_t getkey(uint32_t ip, uint16_t pset_mask, uint16_t pset_index)
 {
-	return ((uint64_t)ip << 32) | (pset_mask <<16) | pset_index;
+	return (((uint64_t)ip) << 32) | ((pset_mask <<16)&0xffff0000) | (pset_index&0xffff);
 }
 
 void insert(BindingPtr record)
@@ -235,7 +237,7 @@ int handle_binding()
 		return -1;
 	}
 	Binding binding;
-	char buf[65536] = {0};
+	char buf[65536] = {0};//printf("command=%d\n", command);
 	switch (command) {
 		case TUNNEL_SET_MAPPING:
 			count = read(client_fd, &binding, sizeof(Binding));
@@ -351,7 +353,6 @@ void binding_restore(std::string file)
 			binding.out_pkts = v.second.get<uint64_t>("downstream-pkts");
 			binding.in_bytes = v.second.get<uint64_t>("upstream-bytes");
 			binding.out_bytes = v.second.get<uint64_t>("downstream-bytes");
-			
 			insert(BindingPtr(new Binding(binding)));
 		}
 	} catch (const std::exception& ex) {
