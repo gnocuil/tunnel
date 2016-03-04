@@ -30,6 +30,7 @@ public:
 		ip6hdr->ip6_hops = 128;
 		memcpy(&(ip6hdr->ip6_src), &(binding->addr6_TC), sizeof(struct in6_addr));
 		memcpy(&(ip6hdr->ip6_dst), &(binding->addr6_TI), sizeof(struct in6_addr));
+
 		send_len = len + 40;
 		return 0;
 	}
